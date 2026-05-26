@@ -263,28 +263,37 @@
        data-es="Completa el formulario y te responderemos pronto.">
       Fill in the form and we'll get back to you quickly.
     </p>
-    <form id="contact-form" novalidate>
+    <form id="contact-form" novalidate autocomplete="off">
       <div class="form-group">
         <label data-en="Your Name" data-es="Tu Nombre">Your Name</label>
-        <input type="text" id="f-name" placeholder="John Smith" required>
+        <input type="text" id="f-name" placeholder="John Smith" required autocomplete="off">
+        <div class="alert-input" id="err-name" style="display:none;color:#b91c1c;font-size:0.85em;margin-top:0.2em"></div>
       </div>
       <div class="form-group">
         <label data-en="Email Address" data-es="Correo Electrónico">Email Address</label>
-        <input type="email" id="f-email" placeholder="john@company.com" required>
+        <input type="email" id="f-email" placeholder="john@company.com" required autocomplete="off">
+        <div class="alert-input" id="err-email" style="display:none;color:#b91c1c;font-size:0.85em;margin-top:0.2em"></div>
       </div>
       <div class="form-group">
         <label data-en="Your Offer (USD)" data-es="Tu Oferta (USD)">Your Offer (USD)</label>
         <input type="text" id="f-offer"
                data-placeholder-en="e.g. $2,000"
                data-placeholder-es="ej. $2.000"
-               placeholder="e.g. $2,000">
+               placeholder="e.g. $2,000" autocomplete="off">
+        <div class="alert-input" id="err-offer" style="display:none;color:#b91c1c;font-size:0.85em;margin-top:0.2em"></div>
       </div>
       <div class="form-group">
         <label data-en="Message (optional)" data-es="Mensaje (opcional)">Message (optional)</label>
         <textarea id="f-message"
                   data-placeholder-en="Tell us about your project or intended use..."
                   data-placeholder-es="Cuéntanos sobre tu proyecto o uso previsto..."
-                  placeholder="Tell us about your project or intended use..."></textarea>
+                  placeholder="Tell us about your project or intended use..." autocomplete="off"></textarea>
+      </div>
+      <div style="font-size:0.85em;color:var(--muted);margin-bottom:1.2em;text-align:left">
+        <span data-en="Your data is confidential. We never share or sell your information."
+              data-es="Tus datos son confidenciales. Nunca compartimos ni vendemos tu información.">
+          Your data is confidential. We never share or sell your information.
+        </span>
       </div>
       <button type="submit" class="submit-btn" id="submit-btn">
         <span id="btn-text" data-en="Send Offer →" data-es="Enviar Oferta →">Send Offer →</span>
@@ -333,15 +342,62 @@
     document.getElementById('btn-es').classList.toggle('active', lang === 'es');
   }
 
+  // --- Validación en tiempo real y envío ---
+  function validateEmail(email) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  }
+  function validateOffer(offer) {
+    if (!offer) return true;
+    // Permite $ y . ,
+    const clean = offer.replace(/[^\d.,]/g, '');
+    return clean.length > 0 && /\d/.test(clean);
+  }
+  function showError(id, msg) {
+    const el = document.getElementById(id);
+    if (msg) {
+      el.textContent = msg;
+      el.style.display = 'block';
+    } else {
+      el.textContent = '';
+      el.style.display = 'none';
+    }
+  }
+  function clearAllErrors() {
+    showError('err-name', '');
+    showError('err-email', '');
+    showError('err-offer', '');
+  }
+  document.getElementById('f-name').addEventListener('input', function() {
+    showError('err-name', this.value.trim() ? '' : (currentLang==='es' ? 'El nombre es obligatorio.' : 'Name is required.'));
+  });
+  document.getElementById('f-email').addEventListener('input', function() {
+    showError('err-email', validateEmail(this.value.trim()) ? '' : (currentLang==='es' ? 'Correo inválido.' : 'Invalid email.'));
+  });
+  document.getElementById('f-offer').addEventListener('input', function() {
+    showError('err-offer', validateOffer(this.value.trim()) ? '' : (currentLang==='es' ? 'Introduce una oferta válida.' : 'Enter a valid offer.'));
+  });
+
   document.getElementById('contact-form').addEventListener('submit', async function(e) {
     e.preventDefault();
-
+    clearAllErrors();
     const name    = document.getElementById('f-name').value.trim();
     const email   = document.getElementById('f-email').value.trim();
     const offer   = document.getElementById('f-offer').value.trim();
     const message = document.getElementById('f-message').value.trim();
-
-    if (!name || !email) return;
+    let valid = true;
+    if (!name) {
+      showError('err-name', currentLang==='es' ? 'El nombre es obligatorio.' : 'Name is required.');
+      valid = false;
+    }
+    if (!email || !validateEmail(email)) {
+      showError('err-email', currentLang==='es' ? 'Correo inválido.' : 'Invalid email.');
+      valid = false;
+    }
+    if (offer && !validateOffer(offer)) {
+      showError('err-offer', currentLang==='es' ? 'Introduce una oferta válida.' : 'Enter a valid offer.');
+      valid = false;
+    }
+    if (!valid) return;
 
     const btn     = document.getElementById('submit-btn');
     const spinner = document.getElementById('spinner');
