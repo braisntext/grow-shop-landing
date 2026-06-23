@@ -1,0 +1,91 @@
+#!/usr/bin/env bash
+#
+# pre-commit — guard against shipping dangling local asset references.
+#
+# This is a static landing site: index.html (and any future *.html / asset
+# folders) is served verbatim, so a reference to a local file that does not
+# exist on disk becomes a 404 in production. Mirrors the biglobster
+# validate-assets.sh `refs` check, adapted to this repo's convention:
+# plain HTML with root-relative ("/img/x.png") or document-relative
+# ("img/x.png", "./img/x.png") asset URLs.
+#
+# Only LOCAL refs with an asset extension are checked. External URLs
+# (http/https/protocol-relative), in-page anchors (#...), mailto:/tel:,
+# data: URIs and templated values ({{...}} / ${...}) are ignored.
+#
+# Pre-existing breakage is tolerated via .githooks/asset-refs-baseline.txt;
+# only NEW dangling references fail the commit. Re-snapshot current debt with:
+#   .githooks/pre-commit --write-baseline
+#
+# This hook takes no arguments when run by the Hermes managed git-guard, which
+# discovers and chains to it automatically (core.hooksPath is set per-clone).
+#
+set -euo pipefail
+
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root"
+
+BASELINE=".githooks/asset-refs-baseline.txt"
+IMG_EXT='jpg|jpeg|png|svg|webp|avif|gif|ico|css|js|mjs|woff|woff2|ttf|eot|mp4|webm|json'
+
+# Emit "<resolved-relpath>\t<html-file>" for every missing local asset ref.
+collect_missing() {
+  local tmp; tmp="$(mktemp)"
+  find . -path ./.git -prune -o -type f -name '*.html' -print \
+    | while IFS= read -r html; do
+        local dir; dir="$(dirname "$html")"
+        {
+          grep -oiE '(src|href|poster|content)="[^"]+\.('"$IMG_EXT"')(\?[^"]*)?"' "$html" 2>/dev/null || true
+          grep -oiE 'url\(["'"'"']?[^)"'"'"']+\.('"$IMG_EXT"')["'"'"']?\)' "$html" 2>/dev/null || true
+        } \
+          | sed -E 's/^[a-zA-Z-]+="//; s/"$//; s/^url\(["'"'"']?//; s/["'"'"']?\)$//; s/[?#].*$//' \
+          | while IFS= read -r ref; do
+              [ -z "$ref" ] && continue
+              case "$ref" in
+                http://*|https://*|//*|mailto:*|tel:*|data:*|\#*) continue ;;
+                *'{{'*|*'${'*|*'}}'*) continue ;;
+              esac
+              local path
+              case "$ref" in
+                /*) path=".$ref" ;;          # root-relative -> repo root
+                *)  path="$dir/$ref" ;;       # document-relative
+              esac
+              path="$(printf '%s' "$path" | sed -E 's#/\./#/#g; s#//+#/#g')"
+              printf '%s\t%s\n' "$path" "$html"
+            done
+      done | sort -u > "$tmp"
+
+  while IFS=$'\t' read -r path html; do
+    [ -z "$path" ] && continue
+    [ -f "$path" ] || printf '%s\t%s\n' "$path" "$html"
+  done < "$tmp"
+  rm -f "$tmp"
+}
+
+miss="$(collect_missing)"
+
+if [ "${1:-}" = "--write-baseline" ]; then
+  printf '%s\n' "$miss" | cut -f1 | sed '/^$/d' | sort -u > "$BASELINE"
+  echo "wrote $(grep -c . "$BASELINE" 2>/dev/null || echo 0) baseline entr(ies) to $BASELINE"
+  exit 0
+fi
+
+new=0 known=0
+while IFS=$'\t' read -r path html; do
+  [ -z "$path" ] && continue
+  if [ -f "$BASELINE" ] && grep -qxF "$path" "$BASELINE"; then
+    known=$((known + 1))
+  else
+    printf '  MISSING (new)  %s\n                 referenced by %s\n' "$path" "$html"
+    new=$((new + 1))
+  fi
+done <<< "$miss"
+
+if [ "$new" -gt 0 ]; then
+  echo "✗ asset check: $new newly-missing asset reference(s) ($known known/baselined)." >&2
+  echo "  A referenced file does not exist. Restore it, or fix/remove the reference." >&2
+  echo "  If this is pre-existing debt, re-snapshot: .githooks/pre-commit --write-baseline" >&2
+  exit 1
+fi
+echo "✓ asset check: no new missing asset refs ($known known/baselined)."
+exit 0
