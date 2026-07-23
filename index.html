@@ -7,6 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap">
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   :root {
@@ -295,6 +296,8 @@
           Your data is confidential. We never share or sell your information.
         </span>
       </div>
+      <div class="cf-turnstile" data-sitekey="0x4AAAAAAD76ACycvduxfQ_z" style="margin-bottom:1.2em"></div>
+      <div class="alert-input" id="err-turnstile" style="display:none;color:#b91c1c;font-size:0.85em;margin-bottom:1.2em"></div>
       <button type="submit" class="submit-btn" id="submit-btn">
         <span id="btn-text" data-en="Send Offer →" data-es="Enviar Oferta →">Send Offer →</span>
         <div class="spinner" id="spinner"></div>
@@ -397,6 +400,11 @@
       showError('err-offer', currentLang==='es' ? 'Introduce una oferta válida.' : 'Enter a valid offer.');
       valid = false;
     }
+    const turnstileToken = document.querySelector('[name="cf-turnstile-response"]')?.value || '';
+    if (!turnstileToken) {
+      showError('err-turnstile', currentLang==='es' ? 'Por favor completa la verificación.' : 'Please complete the verification.');
+      valid = false;
+    }
     if (!valid) return;
 
     const btn     = document.getElementById('submit-btn');
@@ -413,7 +421,7 @@
       const res = await fetch(API_ENDPOINT, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email, offer, message })
+        body: JSON.stringify({ name, email, offer, message, turnstileToken })
       });
 
       if (res.ok) {
@@ -437,6 +445,7 @@
       btn.disabled = false;
       spinner.style.display = 'none';
       btnText.style.display = 'inline';
+      if (window.turnstile) turnstile.reset();
     }
   });
 </script>
